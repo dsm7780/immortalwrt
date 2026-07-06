@@ -1,0 +1,61 @@
+name: Build Redmi AX6000 2GB Firmware
+
+on:
+  workflow_dispatch: # 支援手動點擊按鈕觸發編譯
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Initialization environment
+      env:
+        DEBIAN_FRONTEND: noninteractive
+      run: |
+        sudo rm -rf /etc/apt/sources.list.d/* /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/share/powershell /usr/share/swift / those
+        sudo apt-get update
+        sudo apt-get -y install ack antlr3 asciidoc autoconf automake autopoint binutils bison build-essential bzip2 ccache cmake cpio curl device-tree-compiler fastjar flex gawk gettext gcc-multilib g++-multilib git gperf haveged help2man intltool libc6-dev-i386 libelf-dev libglib2.0-dev libgmp3-dev libltdl-dev libmpc-dev libmpfr-dev libncurses5-dev libncursesw5-dev libsamplerate0-dev libssl-dev libtool lrzsz mkisofs msmtp nano ninja-build p7zip p7zip-full patch pkgconf python3 python3-pip python3-ply qemu-utils rsync scons squashfs-tools subversion swig texinfo u-boot-tools upx-ucl unzip vim wget xmlto xz-utils zlib1g-dev
+
+    - name: Update & Install Feeds
+      run: |
+        ./scripts/feeds update -a
+        ./scripts/feeds install -a
+
+    - name: Load Custom Config
+      run: |
+        [ -e .config ] && mv .config immortalwrt/.config || echo "No custom config found"
+        cd immortalwrt
+        make defconfig
+
+    - name: 🛠️ Modify Device Tree for 2GB RAM
+      run: |
+        # 自動尋找紅米AX6000的原廠佈局DTS檔案並將512M修改為2G
+        DTS_PATH="target/linux/mediatek/files-5.4/arch/arm64/boot/dts/mediatek/mt7986a-xiaomi-redmi-router-ax6000-stock.dts"
+        if [ -f "$DTS_PATH" ]; then
+          sed -i 's/reg = <0 0x40000000 0 0x20000000>;/reg = <0 0x40000000 0 0x80000000>;/g' $DTS_PATH
+          echo "✅ Successfully modified DTS to 2GB RAM!"
+        else
+          echo "❌ Error: DTS file not found!" && exit 1
+        fi
+
+    - name: Download package
+      run: |
+        cd immortalwrt
+        make download -j8
+        find dl -size -1024c -exec ls -l {} \;
+        find dl -size -1024c -exec rm -f {} \;
+
+    - name: Compile the firmware
+      run: |
+        cd immortalwrt
+        echo -e "$(nproc) thread compile"
+        make -j$(nproc) || make -j1 || make -j1 V=s
+
+    - name: Upload firmware to Artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: Redmi-AX6000-2GB-Firmware
+        path: immortalwrt/bin/targets/mediatek/mt7986/*.bin
