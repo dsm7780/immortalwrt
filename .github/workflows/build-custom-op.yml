@@ -23,7 +23,7 @@ jobs:
 
     - name: Clone ImmortalWrt Source
       run: |
-        git clone --depth=1 https://github.com openwrt
+        git clone --depth=1 https://github.com
 
     - name: Update & Install Feeds
       run: |
