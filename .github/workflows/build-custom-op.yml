@@ -1,0 +1,61 @@
+name: Build Redmi AX6000 2GB Firmware
+
+on:
+  workflow_dispatch: # 👈 這個關鍵字決定了右側會不會出現「Run workflow」按鈕
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+
+    - name: Prepare Ubuntu Environment
+      env:
+        DEBIAN_FRONTEND: noninteractive
+      run: |
+        sudo apt-get update
+        sudo apt-get -y install ack antlr3 asciidoc autoconf automake autopoint binutils bison build-essential bzip2 ccache cmake cpio curl device-tree-compiler fastjar flex gawk gettext gcc-multilib g++-multilib git gperf haveged help2man intltool libc6-dev-i386 libelf-dev libglib2.0-dev libgmp3-dev libltdl-dev libmpc-dev libmpfr-dev libncurses5-dev libncursesw5-dev libsamplerate0-dev libssl-dev libtool lrzsz mkisofs msmtp nano ninja-build p7zip p7zip-full patch pkgconf python3 python3-pip python3-ply qemu-utils rsync scons squashfs-tools subversion swig texinfo u-boot-tools upx-ucl unzip vim wget xmlto xz-utils zlib1g-dev
+
+    - name: Clone ImmortalWrt Source
+      run: |
+        git clone -b master --single-branch https://github.com openwrt
+
+    - name: Update & Install Feeds
+      run: |
+        cd openwrt
+        ./scripts/feeds update -a
+        ./scripts/feeds install -a
+
+    - name: Load Config
+      run: |
+        [ -e .config ] && cp .config openwrt/.config || echo "No config found"
+        cd openwrt
+        make defconfig
+
+    - name: 🛠️ Modify DTS for 2GB RAM
+      run: |
+        DTS_PATH="openwrt/target/linux/mediatek/files-5.4/arch/arm64/boot/dts/mediatek/mt7986a-xiaomi-redmi-router-ax6000-stock.dts"
+        if [ -f "$DTS_PATH" ]; then
+          sed -i 's/reg = <0 0x40000000 0 0x20000000>;/reg = <0 0x40000000 0 0x80000000>;/g' $DTS_PATH
+          echo "✅ Successfully modified DTS to 2GB RAM!"
+        else
+          echo "❌ Error: DTS file not found!" && exit 1
+        fi
+
+    - name: Download packages
+      run: |
+        cd openwrt
+        make download -j8
+
+    - name: Compile Firmware
+      run: |
+        cd openwrt
+        make -j$(nproc) || make -j1 V=s
+
+    - name: Upload Firmware to Artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: Redmi-AX6000-2GB-Firmware
+        path: openwrt/bin/targets/mediatek/mt7986/*.bin
